@@ -1,26 +1,30 @@
-"""抓取当日公开市场数据，写入 facts.json。数据源：腾讯行情接口（对海外网络友好，无需密钥）。"""
-import json, re, urllib.request
+"""抓取行情 + 新闻素材，写入 facts.json。行情：腾讯接口；新闻：RSS 源清单（源需定期维护）。"""
+import json, os, re, urllib.request
 from datetime import datetime, timezone, timedelta
+
+import requests
+import feedparser
+
+EDITION = os.environ.get("EDITION", "morning")
 
 CN = timezone(timedelta(hours=8))
 now = datetime.now(CN)
 facts = {
+    "edition": EDITION,
     "date": now.strftime("%Y-%m-%d"),
     "time_beijing": now.strftime("%H:%M"),
     "weekday": ["周一","周二","周三","周四","周五","周六","周日"][now.weekday()],
     "index": {},
+    "weekly_change": {},
     "news_pool": [],
     "notes": [],
 }
 
-SYMBOLS = {
-    "上证指数": "sh000001",
-    "深证成指": "sz399001",
-    "创业板指": "sz399006",
-    "科创50": "sh000688",
-    "沪深300": "sh000300",
-}
-TURNOVER = {"沪市": "sh000001", "深市": "sz399106"}  # 两市合计成交额
+# ============ 行情 ============
+A_SHARES = {"上证指数": "sh000001", "深证成指": "sz399001", "创业板指": "sz399006",
+            "科创50": "sh000688", "沪深300": "sh000300"}
+US_INDEX = {"道琼斯": "usDJI", "纳斯达克": "usIXIC", "标普500": "usINX"}
+TURNOVER = {"沪市": "sh000001", "深市": "sz399106"}
 
 def fetch_quotes(codes):
     url = "https://qt.gtimg.cn/q=" + ",".join(codes)
@@ -34,27 +38,83 @@ def fetch_quotes(codes):
             out[code] = f
     return out
 
+def pct(f):
+    return round((float(f[3]) - float(f[4])) / float(f[4]) * 100, 2)
+
 try:
-    quotes = fetch_quotes(list(SYMBOLS.values()) + list(TURNOVER.values()))
-    for name, code in SYMBOLS.items():
+    quotes = fetch_quotes(list(A_SHARES.values()) + list(US_INDEX.values()) + list(TURNOVER.values()))
+    for name, code in {**A_SHARES, **US_INDEX}.items():
         f = quotes.get(code)
-        if not f:
-            continue
-        price, prev = float(f[3]), float(f[4])
-        facts["index"][name] = {
-            "收盘": round(price, 2),
-            "涨跌幅%": round((price - prev) / prev * 100, 2),
-        }
+        if f:
+            facts["index"][name] = {"收盘": round(float(f[3]), 2), "涨跌幅%": pct(f)}
     try:
-        sh = float(quotes["sh000001"][37]) / 1e4  # 成交额：万元→亿元
-        sz = float(quotes["sz399106"][37]) / 1e4
-        facts["total_turnover_yi"] = round(sh + sz)
+        facts["total_turnover_yi"] = round(float(quotes["sh000001"][37]) / 1e4 + float(quotes["sz399106"][37]) / 1e4)
     except Exception:
         pass
-    if not facts["index"]:
-        facts["notes"].append("行情接口返回为空（可能为非交易时段）")
 except Exception as e:
     facts["notes"].append(f"行情抓取失败：{e}")
+
+def weekly_change(code):
+    try:
+        url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={code},day,,,10,qfq"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            d = json.loads(r.read().decode("utf-8"))["data"][code]
+        days = d.get("qfqday") or d.get("day")
+        if days and len(days) >= 6:
+            return round((float(days[-1][2]) - float(days[-6][2])) / float(days[-6][2]) * 100, 2)
+    except Exception:
+        return None
+
+if EDITION == "weekly":
+    for name, code in {**A_SHARES, **US_INDEX}.items():
+        c = weekly_change(code)
+        if c is not None:
+            facts["weekly_change"][name] = c
+
+# ============ 新闻 ============
+# cat 决定文章分栏：国际 → 【国际篇】；其余 → 【国内篇】
+# 维护提示：运行日志（fetch数据这一步）会打印每个源抓到的条数；连续为 0 的源，换掉它的 url 即可
+RSS_SOURCES = [
+    {"name": "BBC中文",      "url": "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml", "cat": "国际"},
+    {"name": "联合早报·即时", "url": "https://rsshub.app/zaobao/realtime/china",        "cat": "国际"},
+    {"name": "华尔街见闻",   "url": "https://dedicated.wallstreetcn.com/rss.xml",      "cat": "国内-财经"},
+    {"name": "36氪",        "url": "https://36kr.com/feed",                           "cat": "国内-财经"},
+    {"name": "澎湃新闻",     "url": "https://rsshub.app/thepaper/featured",            "cat": "国内-社会"},
+    {"name": "中国政府网",   "url": "https://rsshub.app/gov/xinwen/yaowen",            "cat": "国内-时政"},
+]
+MAX_PER_SOURCE = 5
+MAX_TOTAL = 40
+
+def strip_html(s):
+    return re.sub(r"<[^>]+>", "", s or "").strip()
+
+seen, count = set(), 0
+for src in RSS_SOURCES:
+    try:
+        r = requests.get(src["url"], headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        feed = feedparser.parse(r.content)
+        got = 0
+        for e in feed.entries:
+            if got >= MAX_PER_SOURCE or count >= MAX_TOTAL:
+                break
+            title = (e.get("title") or "").strip()
+            if not title or title in seen:
+                continue
+            seen.add(title)
+            facts["news_pool"].append({
+                "title": title,
+                "source": src["name"],
+                "cat": src["cat"],
+                "link": e.get("link", ""),
+                "summary": strip_html(e.get("summary", ""))[:120],
+            })
+            got += 1
+            count += 1
+        if got == 0:
+            facts["notes"].append(f"源无内容：{src['name']}（考虑更换）")
+    except Exception as ex:
+        facts["notes"].append(f"源抓取失败：{src['name']}：{ex}")
 
 with open("facts.json", "w", encoding="utf-8") as fp:
     json.dump(facts, fp, ensure_ascii=False, indent=2)
