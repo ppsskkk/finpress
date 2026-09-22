@@ -67,4 +67,4 @@ def weekly_change(code):
         return None
 
 if EDITION == "weekly":
-    for name, code in {**A_SHARES, **US_INDEX}.items
+    for name, code in {**A_SHARES, **US_INDEX}.items():
