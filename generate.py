@@ -24,7 +24,7 @@ def main():
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": user},
         ],
-        temperature=0.3,
+        temperature=1,
     )
     md = resp.choices[0].message.content
     fname = f"article_{facts['date']}.md"
