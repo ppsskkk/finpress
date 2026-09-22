@@ -68,3 +68,67 @@ def weekly_change(code):
 
 if EDITION == "weekly":
     for name, code in {**A_SHARES, **US_INDEX}.items():
+        c = weekly_change(code)
+        if c is not None:
+            facts["weekly_change"][name] = c
+
+# ============ 新闻（经济 / 科技 / 社会 / 国际）============
+# 维护提示：运行日志会打印每个源的抓取条数；连续为 0 的源，注释掉或换 url
+RSS_SOURCES = [
+    {"name": "BBC英文·财经", "url": "https://feeds.bbci.co.uk/news/business/rss.xml", "cat": "国际"},
+    {"name": "BBC中文·科技", "url": "https://feeds.bbci.co.uk/zhongwen/simp/science/rss.xml", "cat": "国际"},
+    {"name": "华尔街见闻",   "url": "https://dedicated.wallstreetcn.com/rss.xml", "cat": "经济"},
+    {"name": "36氪",        "url": "https://36kr.com/feed", "cat": "经济"},
+    {"name": "少数派",      "url": "https://sspai.com/feed", "cat": "科技"},
+    {"name": "爱范儿",      "url": "https://www.ifanr.com/feed", "cat": "科技"},
+    {"name": "澎湃新闻",    "url": "https://rsshub.app/thepaper/featured", "cat": "社会"},
+]
+MAX_PER_SOURCE = 5
+MAX_TOTAL = 40
+
+def strip_html(s):
+    return re.sub(r"<[^>]+>", "", s or "").strip()
+
+# 内容安全预过滤：命中即剔除该条。遇到 content_filter 报错时，
+# 看运行日志里 facts.json 中的标题，把触发词补充到下面列表。
+BLOCK_PATTERNS = [w.lower() for w in [
+    "填入触发词1", "填入触发词2",
+]]
+
+def is_blocked(text):
+    return any(w in (text or "").lower() for w in BLOCK_PATTERNS)
+
+seen, count = set(), 0
+for src in RSS_SOURCES:
+    try:
+        r = requests.get(src["url"], headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        feed = feedparser.parse(r.content)
+        got = 0
+        for e in feed.entries:
+            if got >= MAX_PER_SOURCE or count >= MAX_TOTAL:
+                break
+            title = (e.get("title") or "").strip()
+            if not title or title in seen:
+                continue
+            full = title + " " + strip_html(e.get("summary", ""))
+            if is_blocked(full):
+                continue
+            is_intl = src["cat"] == "国际"
+            seen.add(title)
+            facts["news_pool"].append({
+                "title": title,
+                "source": src["name"],
+                "cat": src["cat"],
+                "link": e.get("link", ""),
+                "summary": "" if is_intl else strip_html(e.get("summary", ""))[:120],
+            })
+            got += 1
+            count += 1
+        if got == 0:
+            facts["notes"].append(f"源无内容：{src['name']}（考虑更换）")
+    except Exception as ex:
+        facts["notes"].append(f"源抓取失败：{src['name']}：{ex}")
+
+with open("facts.json", "w", encoding="utf-8") as fp:
+    json.dump(facts, fp, ensure_ascii=False, indent=2)
+print(json.dumps(facts, ensure_ascii=False, indent=2))
