@@ -73,21 +73,29 @@ if EDITION == "weekly":
             facts["weekly_change"][name] = c
 
 # ============ 新闻 ============
-# cat 决定文章分栏：国际 → 【国际篇】；其余 → 【国内篇】
-# 维护提示：运行日志（fetch数据这一步）会打印每个源抓到的条数；连续为 0 的源，换掉它的 url 即可
+# 维护提示：运行日志会打印每个源的抓取情况；连续失败的源，注释掉或换 url
 RSS_SOURCES = [
     {"name": "BBC中文",      "url": "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml", "cat": "国际"},
     {"name": "联合早报·即时", "url": "https://rsshub.app/zaobao/realtime/china",        "cat": "国际"},
     {"name": "华尔街见闻",   "url": "https://dedicated.wallstreetcn.com/rss.xml",      "cat": "国内-财经"},
     {"name": "36氪",        "url": "https://36kr.com/feed",                           "cat": "国内-财经"},
     {"name": "澎湃新闻",     "url": "https://rsshub.app/thepaper/featured",            "cat": "国内-社会"},
-   # {"name": "中国政府网",   "url": "https://rsshub.app/gov/xinwen/yaowen",            "cat": "国内-时政"},
+    # {"name": "中国政府网", "url": "https://rsshub.app/gov/xinwen/yaowen", "cat": "国内-时政"},  # 易触发内容过滤，默认停用
 ]
 MAX_PER_SOURCE = 5
 MAX_TOTAL = 40
 
 def strip_html(s):
     return re.sub(r"<[^>]+>", "", s or "").strip()
+
+# 内容安全预过滤：命中即剔除该条。遇到 content_filter 报错时，
+# 看运行日志里 facts.json 中的标题，把触发词补充到下面列表。
+BLOCK_PATTERNS = [w.lower() for w in [
+    "填入触发词1", "填入触发词2",
+]]
+
+def is_blocked(text):
+    return any(w in (text or "").lower() for w in BLOCK_PATTERNS)
 
 seen, count = set(), 0
 for src in RSS_SOURCES:
@@ -100,6 +108,9 @@ for src in RSS_SOURCES:
                 break
             title = (e.get("title") or "").strip()
             if not title or title in seen:
+                continue
+            full = title + " " + strip_html(e.get("summary", ""))
+            if is_blocked(full):
                 continue
             seen.add(title)
             facts["news_pool"].append({
