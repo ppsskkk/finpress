@@ -91,7 +91,6 @@ if EDITION == "weekly":
 
 # ============ 新闻（经济 / 科技 / 社会 / 国际）============
 # 维护提示：运行日志会打印每个源的抓取条数；连续为 0 的源，注释掉或换 url
-# 国内新闻站 RSS 生态差：社会类内容靠 prompt 从消费/生活方式报道中挑选，不单独设源
 RSS_SOURCES = [
     {"name": "BBC英文·财经", "url": "https://feeds.bbci.co.uk/news/business/rss.xml", "cat": "国际"},
     {"name": "FT中文网",     "url": "http://www.ftchinese.com/rss/news",            "cat": "国际"},
@@ -113,6 +112,27 @@ BLOCK_PATTERNS = [w.lower() for w in [
 
 def is_blocked(text):
     return any(w in (text or "").lower() for w in BLOCK_PATTERNS)
+
+def entry_image(e):
+    """从 RSS 条目提取配图 URL（抓不到返回空字符串）"""
+    try:
+        if e.get("media_content"):
+            return e.media_content[0].get("url", "")
+    except Exception:
+        pass
+    try:
+        if e.get("media_thumbnail"):
+            return e.media_thumbnail[0].get("url", "")
+    except Exception:
+        pass
+    try:
+        if e.get("enclosures"):
+            enc = e.enclosures[0]
+            if "image" in enc.get("type", ""):
+                return enc.get("href", "")
+    except Exception:
+        pass
+    return ""
 
 seen, count = set(), 0
 for src in RSS_SOURCES:
@@ -137,6 +157,7 @@ for src in RSS_SOURCES:
                 "cat": src["cat"],
                 "link": e.get("link", ""),
                 "summary": "" if is_intl else strip_html(e.get("summary", ""))[:120],
+                "image": entry_image(e),
             })
             got += 1
             count += 1
