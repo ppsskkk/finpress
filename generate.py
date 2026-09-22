@@ -43,7 +43,8 @@ STYLE = """【输出格式】只输出一段 HTML 片段：不要 markdown 标�
 主题色 #0F4C81（深蓝），辅助灰 #7a7a7a / #b0b0b0，白底，财经媒体风格，禁止花哨配色、渐变、emoji、花哨字体。
 排版规范：
 - 最外层 <section style="font-size:15px;color:#2b2b2b;line-height:1.9;letter-spacing:0.5px;">
-- 顶部标题区：<h2 style="font-size:20px;color:#0F4C81;border-bottom:2px solid #0F4C81;padding-bottom:10px;margin:0 0 8px;">选定的主标题</h2>，其下导语 <p style="color:#7a7a7a;font-size:13px;margin:0 0 4px;">
+- 置顶声明（放在最顶部、主标题之前，文字一字不改）：<p style="background:#f7f7f7;border:1px solid #e8e8e8;border-radius:6px;padding:10px 12px;color:#8a8a8a;font-size:12.5px;line-height:1.8;margin:0 0 20px;">【个人阅读笔记】仅摘抄整理外网、行业媒体公开资讯，属于个人学习记录，不是新闻报道，不构成任何投资建议，市场有风险。所有信息均来自公开媒体素材，仅做个人阅读存档。</p>
+- 顶部标题区：主标题必须包含素材 date 字段里的日期（如"9月23日"或"9月23日晚间"）。<h2 style="font-size:20px;color:#0F4C81;border-bottom:2px solid #0F4C81;padding-bottom:10px;margin:0 0 8px;">含日期的主标题</h2>，其下导语 <p style="color:#7a7a7a;font-size:13px;margin:0 0 4px;">
 - 板块标题（市场概览/国内篇/国际篇/今日看点/明日看点/下周看点）：<h3 style="font-size:16px;color:#0F4C81;border-left:5px solid #0F4C81;padding-left:10px;margin:28px 0 14px;">
 - 小节标签（经济/科技/社会/本周要闻等）：<p style="margin:18px 0 10px;"><strong style="background:#0F4C81;color:#ffffff;font-size:13px;padding:3px 10px;border-radius:3px;">标签</strong></p>
 - 每条新闻：标题 <p style="font-size:15.5px;margin:16px 0 6px;"><strong>标题</strong></p>；正文 <p style="margin:0 0 6px;">；点评 <p style="color:#8a8a8a;font-size:13px;margin:0 0 4px;">点评：…</p>；来源 <p style="color:#b0b0b0;font-size:12px;margin:0 0 16px;">来源：xx</p>
