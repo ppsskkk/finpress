@@ -1,10 +1,12 @@
-"""按版本生成公众号排好版的 HTML：article_{版本}_{日期}.html。含内容过滤自动重试与降级。"""
-import json, os, sys
+"""按版本生成公众号排好版的 HTML：article_{版本}_{日期}.html。含超时保护与内容过滤自动重试。"""
+import json, os, sys, time
 from openai import OpenAI
 
 client = OpenAI(
     api_key=os.environ["MOONSHOT_API_KEY"],
     base_url="https://api.moonshot.cn/v1",
+    timeout=180,          # 单次请求最多等 3 分钟，避免挂死
+    max_retries=2,
 )
 
 BLOCK_PATTERNS = [w.lower() for w in [
@@ -58,28 +60,33 @@ def call(facts, pool, edition):
         ],
     )
 
-def main():
-    facts = json.load(open("facts.json", encoding="utf-8"))
-    edition = facts.get("edition", "morning")
-    pool = facts["news_pool"]
-
+def call_with_fallback(facts, pool, edition):
+    """先全量调用；被内容过滤则分级剔除重试；超时则等待后重试一次。"""
     try:
-        resp = call(facts, pool, edition)
+        return call(facts, pool, edition)
     except Exception as e:
-        msg = str(e)
+        msg = str(e).lower()
         if "high risk" in msg or "content_filter" in msg:
             print("被内容过滤拦截，剔除国际条目重试…")
             try:
-                resp = call(facts, [n for n in pool if n["cat"] != "国际"], edition)
+                return call(facts, [n for n in pool if n["cat"] != "国际"], edition)
             except Exception:
                 print("仍被拦截，再剔除疑似条目重试…")
                 try:
-                    resp = call(facts, [n for n in pool if n["cat"] != "国际" and not is_blocked(n["title"])], edition)
+                    return call(facts, [n for n in pool if n["cat"] != "国际" and not is_blocked(n["title"])], edition)
                 except Exception:
                     print("仍被拦截，降级为行情简评稿")
-                    resp = call(facts, [], edition)
-        else:
-            raise
+                    return call(facts, [], edition)
+        if "timed out" in msg or "timeout" in msg:
+            print("请求超时，60秒后重试一次…")
+            time.sleep(60)
+            return call(facts, pool, edition)
+        raise
+
+def main():
+    facts = json.load(open("facts.json", encoding="utf-8"))
+    edition = facts.get("edition", "morning")
+    resp = call_with_fallback(facts, facts["news_pool"], edition)
 
     md = resp.choices[0].message.content
     fname = f"article_{edition}_{facts['date']}.html"
