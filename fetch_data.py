@@ -1,14 +1,21 @@
 """抓取行情 + 新闻素材，写入 facts.json。行情：腾讯接口；新闻：RSS 源清单（源需定期维护）。"""
-import json, os, re, urllib.request
+import json, re, urllib.request
 from datetime import datetime, timezone, timedelta
 
 import requests
 import feedparser
 
-EDITION = os.environ.get("EDITION", "morning")
-
 CN = timezone(timedelta(hours=8))
 now = datetime.now(CN)
+
+# 版本由 Python 按北京时间判断（runner 的 shell 时区不可靠，勿用环境变量传入）
+if now.weekday() == 6:
+    EDITION = "weekly"
+elif now.hour >= 18:
+    EDITION = "evening"
+else:
+    EDITION = "morning"
+
 facts = {
     "edition": EDITION,
     "date": now.strftime("%Y-%m-%d"),
@@ -34,19 +41,29 @@ def fetch_quotes(codes):
     out = {}
     for code, val in re.findall(r'v_(\w+)="([^"]*)"', text):
         f = val.split("~")
-        if len(f) > 4 and f[3]:
+        if len(f) > 7 and f[3]:
             out[code] = f
     return out
 
-def pct(f):
-    return round((float(f[3]) - float(f[4])) / float(f[4]) * 100, 2)
+def quote_detail(f):
+    prev = float(f[4]); price = float(f[3])
+    hi, lo = float(f[6]), float(f[7])
+    return {
+        "开盘": round(float(f[5]), 2),
+        "最高": round(hi, 2),
+        "最低": round(lo, 2),
+        "收盘": round(price, 2),
+        "昨收": round(prev, 2),
+        "涨跌幅%": round((price - prev) / prev * 100, 2),
+        "振幅%": round((hi - lo) / prev * 100, 2),
+    }
 
 try:
     quotes = fetch_quotes(list(A_SHARES.values()) + list(US_INDEX.values()) + list(TURNOVER.values()))
     for name, code in {**A_SHARES, **US_INDEX}.items():
         f = quotes.get(code)
         if f:
-            facts["index"][name] = {"收盘": round(float(f[3]), 2), "涨跌幅%": pct(f)}
+            facts["index"][name] = quote_detail(f)
     try:
         facts["total_turnover_yi"] = round(float(quotes["sh000001"][37]) / 1e4 + float(quotes["sz399106"][37]) / 1e4)
     except Exception:
@@ -74,14 +91,13 @@ if EDITION == "weekly":
 
 # ============ 新闻（经济 / 科技 / 社会 / 国际）============
 # 维护提示：运行日志会打印每个源的抓取条数；连续为 0 的源，注释掉或换 url
+# 国内新闻站 RSS 生态差：社会类内容靠 prompt 从消费/生活方式报道中挑选，不单独设源
 RSS_SOURCES = [
     {"name": "BBC英文·财经", "url": "https://feeds.bbci.co.uk/news/business/rss.xml", "cat": "国际"},
-    {"name": "BBC中文·科技", "url": "https://feeds.bbci.co.uk/zhongwen/simp/science/rss.xml", "cat": "国际"},
-    {"name": "华尔街见闻",   "url": "https://dedicated.wallstreetcn.com/rss.xml", "cat": "经济"},
-    {"name": "36氪",        "url": "https://36kr.com/feed", "cat": "经济"},
-    {"name": "少数派",      "url": "https://sspai.com/feed", "cat": "科技"},
-    {"name": "爱范儿",      "url": "https://www.ifanr.com/feed", "cat": "科技"},
-    {"name": "澎湃新闻",    "url": "https://rsshub.app/thepaper/featured", "cat": "社会"},
+    {"name": "FT中文网",     "url": "http://www.ftchinese.com/rss/news",            "cat": "国际"},
+    {"name": "华尔街见闻",   "url": "https://dedicated.wallstreetcn.com/rss.xml",   "cat": "经济"},
+    {"name": "少数派",       "url": "https://sspai.com/feed",                       "cat": "科技"},
+    {"name": "爱范儿",       "url": "https://www.ifanr.com/feed",                   "cat": "科技"},
 ]
 MAX_PER_SOURCE = 5
 MAX_TOTAL = 40
