@@ -19,12 +19,11 @@ def main():
     user = "今日素材（JSON）：" + json.dumps(facts, ensure_ascii=False)
 
     resp = client.chat.completions.create(
-        model="kimi-k3",  # 如不可用，到 platform.moonshot.cn 控制台查看可用模型名
+        model="kimi-k2.6",
         messages=[
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": user},
         ],
-        temperature=1,
     )
     md = resp.choices[0].message.content
     fname = f"article_{facts['date']}.md"
