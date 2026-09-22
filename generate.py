@@ -1,12 +1,17 @@
-"""按版本生成公众号排好版的 HTML：article_{版本}_{日期}.html。含超时保护与内容过滤自动重试。"""
+"""按版本生成公众号排好版的 HTML：article_{版本}_{日期}.html。
+流程：先探活 API（链路不通快速失败）→ 再生成（长超时，正常生成需4-6分钟）。"""
 import json, os, sys, time
+
+import requests
 from openai import OpenAI
 
+API_KEY = os.environ["MOONSHOT_API_KEY"]
+
 client = OpenAI(
-    api_key=os.environ["MOONSHOT_API_KEY"],
+    api_key=API_KEY,
     base_url="https://api.moonshot.cn/v1",
-    timeout=180,          # 单次请求最多等 3 分钟，避免挂死
-    max_retries=2,
+    timeout=600,       # 正常生成本身需 4-6 分钟，不能用短超时
+    max_retries=0,     # 重试由本脚本自己控制
 )
 
 BLOCK_PATTERNS = [w.lower() for w in [
@@ -15,6 +20,24 @@ BLOCK_PATTERNS = [w.lower() for w in [
 
 def is_blocked(text):
     return any(w in (text or "").lower() for w in BLOCK_PATTERNS)
+
+def ping_api():
+    """短探活：最多试 6 次（每次 10 秒超时，间隔 30 秒），确认链路通畅"""
+    for i in range(6):
+        try:
+            r = requests.get(
+                "https://api.moonshot.cn/v1/models",
+                headers={"Authorization": f"Bearer {API_KEY}"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                print(f"API 连通正常（第 {i+1} 次探活）")
+                return True
+            print(f"第 {i+1} 次探活 HTTP {r.status_code}，30 秒后重试…")
+        except Exception as e:
+            print(f"第 {i+1} 次探活失败：{e}，30 秒后重试…")
+        time.sleep(30)
+    return False
 
 STYLE = """【输出格式】只输出一段 HTML 片段：不要 markdown 标记、不要代码块围栏、不要任何解释性文字，粘贴进微信公众号编辑器后应直接呈现排版效果。全部样式用内联 style，禁止 class。
 主题色 #0F4C81（深蓝），辅助灰 #7a7a7a / #b0b0b0，白底，财经媒体风格，禁止花哨配色、渐变、emoji、花哨字体。
@@ -61,7 +84,6 @@ def call(facts, pool, edition):
     )
 
 def call_with_fallback(facts, pool, edition):
-    """先全量调用；被内容过滤则分级剔除重试；超时则等待后重试一次。"""
     try:
         return call(facts, pool, edition)
     except Exception as e:
@@ -77,13 +99,13 @@ def call_with_fallback(facts, pool, edition):
                 except Exception:
                     print("仍被拦截，降级为行情简评稿")
                     return call(facts, [], edition)
-        if "timed out" in msg or "timeout" in msg:
-            print("请求超时，60秒后重试一次…")
-            time.sleep(60)
-            return call(facts, pool, edition)
         raise
 
 def main():
+    if not ping_api():
+        print("API 持续不可达，本次生成放弃（下次定时任务会重试）")
+        sys.exit(1)
+
     facts = json.load(open("facts.json", encoding="utf-8"))
     edition = facts.get("edition", "morning")
     resp = call_with_fallback(facts, facts["news_pool"], edition)
