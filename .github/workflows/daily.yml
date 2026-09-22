@@ -1,0 +1,37 @@
+name: daily-finpress
+on:
+  schedule:
+    - cron: "30 23 * * 0-4"   # 北京时间 周一至周五 7:30（晨报）
+    - cron: "30 13 * * 0-4"   # 北京时间 周一至周五 21:30（晚报）
+    - cron: "0 0 * * 0"       # 北京时间 周日 8:00（周报）
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: 抓取行情与新闻
+        run: python fetch_data.py
+      - name: 读取版本
+        id: edition
+        run: echo "edition=$(python -c "import json;print(json.load(open('facts.json'))['edition'])")" >> "$GITHUB_OUTPUT"
+      - name: 生成公众号文章
+        run: python generate.py
+        env:
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+      - name: 保存文章
+        uses: actions/upload-artifact@v4
+        with:
+          name: article-${{ steps.edition.outputs.edition }}
+          path: article_*.html
+      - name: 邮件推送
+        run: python send_email.py
+        env:
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_PASS: ${{ secrets.MAIL_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
