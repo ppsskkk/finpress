@@ -81,7 +81,7 @@ RSS_SOURCES = [
     {"name": "华尔街见闻",   "url": "https://dedicated.wallstreetcn.com/rss.xml",      "cat": "国内-财经"},
     {"name": "36氪",        "url": "https://36kr.com/feed",                           "cat": "国内-财经"},
     {"name": "澎湃新闻",     "url": "https://rsshub.app/thepaper/featured",            "cat": "国内-社会"},
-    {"name": "中国政府网",   "url": "https://rsshub.app/gov/xinwen/yaowen",            "cat": "国内-时政"},
+   # {"name": "中国政府网",   "url": "https://rsshub.app/gov/xinwen/yaowen",            "cat": "国内-时政"},
 ]
 MAX_PER_SOURCE = 5
 MAX_TOTAL = 40
