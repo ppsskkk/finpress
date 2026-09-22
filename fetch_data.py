@@ -1,45 +1,61 @@
-"""抓取当日公开市场数据，写入 facts.json。任何一步失败都不致命，只记录到 notes。"""
-import json
-from datetime import datetime
+"""抓取当日公开市场数据，写入 facts.json。数据源：腾讯行情接口（对海外网络友好，无需密钥）。"""
+import json, re, urllib.request
+from datetime import datetime, timezone, timedelta
 
+CN = timezone(timedelta(hours=8))
+now = datetime.now(CN)
 facts = {
-    "date": datetime.now().strftime("%Y-%m-%d"),
-    "weekday": datetime.now().weekday(),  # 0=周一
+    "date": now.strftime("%Y-%m-%d"),
+    "time_beijing": now.strftime("%H:%M"),
+    "weekday": ["周一","周二","周三","周四","周五","周六","周日"][now.weekday()],
     "index": {},
     "news_pool": [],
     "notes": [],
 }
 
-# ---- A股主要指数（akshare 聚合公开行情；接口偶有变动，失败会记录）----
+SYMBOLS = {
+    "上证指数": "sh000001",
+    "深证成指": "sz399001",
+    "创业板指": "sz399006",
+    "科创50": "sh000688",
+    "沪深300": "sh000300",
+}
+TURNOVER = {"沪市": "sh000001", "深市": "sz399106"}  # 两市合计成交额
+
+def fetch_quotes(codes):
+    url = "https://qt.gtimg.cn/q=" + ",".join(codes)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        text = r.read().decode("gbk", errors="ignore")
+    out = {}
+    for code, val in re.findall(r'v_(\w+)="([^"]*)"', text):
+        f = val.split("~")
+        if len(f) > 4 and f[3]:
+            out[code] = f
+    return out
+
 try:
-    import akshare as ak
-    spot = ak.stock_zh_index_spot_em()
-    targets = ["上证指数", "深证成指", "创业板指", "科创50", "沪深300"]
-    for name in targets:
-        row = spot[spot["名称"] == name]
-        if row.empty:
-            row = spot[spot["名称"].str.contains(name[:2], na=False)]
-        if not row.empty:
-            r = row.iloc[0]
-            facts["index"][name] = {
-                "收盘": round(float(r["最新价"]), 2),
-                "涨跌幅%": round(float(r["涨跌幅"]), 2),
-            }
-    # 两市成交额（亿元）
+    quotes = fetch_quotes(list(SYMBOLS.values()) + list(TURNOVER.values()))
+    for name, code in SYMBOLS.items():
+        f = quotes.get(code)
+        if not f:
+            continue
+        price, prev = float(f[3]), float(f[4])
+        facts["index"][name] = {
+            "收盘": round(price, 2),
+            "涨跌幅%": round((price - prev) / prev * 100, 2),
+        }
     try:
-        sh = spot[spot["名称"] == "上证指数"]["成交额"].iloc[0]
-        sz = spot[spot["名称"].str.contains("深证", na=False)]["成交额"].iloc[0]
-        facts["total_turnover_yi"] = round((float(sh) + float(sz)) / 1e8)
+        sh = float(quotes["sh000001"][37]) / 1e4  # 成交额：万元→亿元
+        sz = float(quotes["sz399106"][37]) / 1e4
+        facts["total_turnover_yi"] = round(sh + sz)
     except Exception:
         pass
+    if not facts["index"]:
+        facts["notes"].append("行情接口返回为空（可能为非交易时段）")
 except Exception as e:
-    facts["notes"].append(f"行情抓取失败（可能为周末休市或接口变动）：{e}")
+    facts["notes"].append(f"行情抓取失败：{e}")
 
-# ---- 新闻池：在此追加你自己的官方 RSS/栏目源（可选，v1 可留空）----
-# 推荐源（均为官方公开发布）：央行、证监会、工信部、统计局、上交所、深交所
-# facts["news_pool"].append({"title": "...", "source": "央行", "url": "..."})
-
-with open("facts.json", "w", encoding="utf-8") as f:
-    json.dump(facts, f, ensure_ascii=False, indent=2)
-
+with open("facts.json", "w", encoding="utf-8") as fp:
+    json.dump(facts, fp, ensure_ascii=False, indent=2)
 print(json.dumps(facts, ensure_ascii=False, indent=2))
