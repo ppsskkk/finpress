@@ -16,8 +16,7 @@ SYSTEM = """你是「每日财经简报」公众号编辑。严格遵守：
 
 def main():
     facts = json.load(open("facts.json", encoding="utf-8"))
-    user = "今日素材（JSON）：
-" + json.dumps(facts, ensure_ascii=False)
+    user = "今日素材（JSON）：" + json.dumps(facts, ensure_ascii=False)
 
     resp = client.chat.completions.create(
         model="kimi-k3",  # 如不可用，到 platform.moonshot.cn 控制台查看可用模型名
