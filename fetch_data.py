@@ -96,8 +96,8 @@ RSS_SOURCES = [
     {"name": "少数派",       "url": "https://sspai.com/feed",                       "cat": "科技"},
     {"name": "爱范儿",       "url": "https://www.ifanr.com/feed",                   "cat": "科技"},
 ]
-MAX_PER_SOURCE = 5
-MAX_TOTAL = 40
+MAX_PER_SOURCE = 4
+MAX_TOTAL = 24
 
 def strip_html(s):
     return re.sub(r"<[^>]+>", "", s or "").strip()
@@ -143,7 +143,7 @@ for src in RSS_SOURCES:
                 "source": src["name"],
                 "cat": src["cat"],
                 "link": e.get("link", ""),
-                "summary": summary[:250],
+                "summary": summary[:200],
                 "image": pick_image(e),
             })
             got += 1
