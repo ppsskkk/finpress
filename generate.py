@@ -1,4 +1,4 @@
-"""按版本生成公众号排版稿：article_{版本}_{日期}.html。含内容过滤降级与超时重试。"""
+"""按版本生成公众号排版稿：article_{版本}_{日期}.html。流式输出 + 网络重试 + 内容过滤降级。"""
 import json, os, sys, time
 from openai import OpenAI
 
@@ -50,17 +50,38 @@ PROMPTS = {
     "weekly":  HEADER + "写【周末版】。结构：3个标题备选→导语120字内→【市场概览】用表格列出各指数本周涨跌幅（weekly_change 字段，table 用内联样式，表头深蓝底白字），并概括本周全球市场与A股特征→【国内篇·本周要闻】（经济/科技/社会分组，8-12条）→【国际篇·本周要闻】5-8条→【深度解读】1-2条→【下周看点】表格（日期|事件，4-6条）→免责声明。" + BASE,
 }
 
+def ping_api():
+    """连通性预检：30 秒内无响应说明接口不可达，快速失败。"""
+    client.chat.completions.create(
+        model="kimi-k2.6",
+        messages=[{"role": "user", "content": "回复 ok"}],
+        max_tokens=5,
+        timeout=30,
+    )
+
 def call(facts, pool, edition):
+    """流式生成，返回完整 HTML 文本；实时打印接收进度。"""
     f2 = dict(facts)
     f2["news_pool"] = pool
-    return client.chat.completions.create(
+    stream = client.chat.completions.create(
         model="kimi-k2.6",
         messages=[
             {"role": "system", "content": PROMPTS.get(edition, PROMPTS["morning"])},
             {"role": "user", "content": "今日素材（JSON）：" + json.dumps(f2, ensure_ascii=False)},
         ],
         timeout=480,
+        stream=True,
     )
+    parts, n, mark = [], 0, 500
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            parts.append(delta)
+            n += len(delta)
+            if n >= mark:
+                print(f"生成中…已接收约 {n} 字", flush=True)
+                mark += 500
+    return "".join(parts)
 
 def call_with_retry(facts, pool, edition, attempts=3):
     """网络类错误（超时/连接失败）自动重试，其他错误直接抛出。"""
@@ -73,7 +94,7 @@ def call_with_retry(facts, pool, edition, attempts=3):
                          or "connection" in msg or "connect" in msg)
             if not transient or i == attempts - 1:
                 raise
-            print(f"第 {i + 1} 次调用遇到网络问题（{e}），60 秒后重试…")
+            print(f"第 {i + 1} 次调用遇到网络问题（{e}），60 秒后重试…", flush=True)
             time.sleep(60)
 
 def main():
@@ -81,34 +102,41 @@ def main():
     edition = facts.get("edition", EDITION)
     pool = facts["news_pool"]
 
+    print("测试接口连通性…", flush=True)
     try:
-        print(f"开始生成 {edition} 版稿件（长文生成约需 4-8 分钟，请耐心等待）…")
-        resp = call_with_retry(facts, pool, edition)
+        ping_api()
+    except Exception as e:
+        print(f"接口无响应（{e}），60 秒后再试一次…", flush=True)
+        time.sleep(60)
+        ping_api()
+    print(f"接口正常，开始生成 {edition} 版稿件（流式输出，下方会实时显示进度）…", flush=True)
+
+    try:
+        html = call_with_retry(facts, pool, edition)
     except Exception as e:
         msg = str(e)
         if "high risk" in msg or "content_filter" in msg:
-            print("被内容过滤拦截，剔除国际条目重试…")
+            print("被内容过滤拦截，剔除国际条目重试…", flush=True)
             try:
-                resp = call_with_retry(facts, [n for n in pool if n["cat"] != "国际"], edition)
+                html = call_with_retry(facts, [x for x in pool if x["cat"] != "国际"], edition)
             except Exception:
-                print("仍被拦截，再剔除疑似条目重试…")
+                print("仍被拦截，再剔除疑似条目重试…", flush=True)
                 try:
-                    resp = call_with_retry(facts, [n for n in pool if n["cat"] != "国际" and not is_blocked(n["title"])], edition)
+                    html = call_with_retry(facts, [x for x in pool if x["cat"] != "国际" and not is_blocked(x["title"])], edition)
                 except Exception:
-                    print("仍被拦截，降级为行情简评稿")
-                    resp = call_with_retry(facts, [], edition)
+                    print("仍被拦截，降级为行情简评稿", flush=True)
+                    html = call_with_retry(facts, [], edition)
         else:
             raise
 
-    html = resp.choices[0].message.content
     fname = f"article_{edition}_{facts['date']}.html"
     with open(fname, "w", encoding="utf-8") as f:
         f.write(html)
-    print(f"已生成 {fname}")
+    print(f"已生成 {fname}", flush=True)
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"生成失败：{e}", file=sys.stderr)
+        print(f"生成失败：{e}", file=sys.stderr, flush=True)
         sys.exit(1)
