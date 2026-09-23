@@ -1,5 +1,5 @@
-"""抓取行情 + 新闻素材，写入 facts.json。行情：腾讯接口；新闻：RSS 源清单（源需定期维护）。"""
-import json, re, urllib.request
+"""抓取行情 + 新闻素材，输出 facts.json。edition 由北京时间自动判断。"""
+import json, os, re, urllib.request
 from datetime import datetime, timezone, timedelta
 
 import requests
@@ -8,13 +8,12 @@ import feedparser
 CN = timezone(timedelta(hours=8))
 now = datetime.now(CN)
 
-# 版本由 Python 按北京时间判断（runner 的 shell 时区不可靠，勿用环境变量传入）
 if now.weekday() == 6:
     EDITION = "weekly"
-elif now.hour >= 18:
-    EDITION = "evening"
-else:
+elif now.hour < 18:
     EDITION = "morning"
+else:
+    EDITION = "evening"
 
 facts = {
     "edition": EDITION,
@@ -41,21 +40,20 @@ def fetch_quotes(codes):
     out = {}
     for code, val in re.findall(r'v_(\w+)="([^"]*)"', text):
         f = val.split("~")
-        if len(f) > 7 and f[3]:
+        if len(f) > 4 and f[3]:
             out[code] = f
     return out
 
 def quote_detail(f):
     prev = float(f[4]); price = float(f[3])
-    hi, lo = float(f[6]), float(f[7])
     return {
         "开盘": round(float(f[5]), 2),
-        "最高": round(hi, 2),
-        "最低": round(lo, 2),
+        "最高": round(float(f[6]), 2),
+        "最低": round(float(f[7]), 2),
         "收盘": round(price, 2),
         "昨收": round(prev, 2),
         "涨跌幅%": round((price - prev) / prev * 100, 2),
-        "振幅%": round((hi - lo) / prev * 100, 2),
+        "振幅%": round((float(f[6]) - float(f[7])) / prev * 100, 2),
     }
 
 try:
@@ -104,35 +102,23 @@ MAX_TOTAL = 40
 def strip_html(s):
     return re.sub(r"<[^>]+>", "", s or "").strip()
 
-# 微信发布合规预过滤：个人号无新闻资质，命中即剔除该条。
-# 如发现新的拦截词，补充到下面列表（保持小写）。
+# 内容安全预过滤：命中即剔除该条。遇到 content_filter 报错时，
+# 看运行日志里 facts.json 中的标题，把触发词补充到下面列表。
 BLOCK_PATTERNS = [w.lower() for w in [
-    "政府", "会晤", "峰会", "部长", "大臣", "总统", "主席", "国务院",
-    "白宫", "国会", "议会", "制裁", "关税战", "军演",
+    "填入触发词1", "填入触发词2",
 ]]
 
 def is_blocked(text):
     return any(w in (text or "").lower() for w in BLOCK_PATTERNS)
 
-def entry_image(e):
-    """从 RSS 条目提取配图 URL（抓不到返回空字符串）"""
-    try:
-        if e.get("media_content"):
-            return e.media_content[0].get("url", "")
-    except Exception:
-        pass
-    try:
-        if e.get("media_thumbnail"):
-            return e.media_thumbnail[0].get("url", "")
-    except Exception:
-        pass
-    try:
-        if e.get("enclosures"):
-            enc = e.enclosures[0]
-            if "image" in enc.get("type", ""):
-                return enc.get("href", "")
-    except Exception:
-        pass
+def pick_image(e):
+    for m in e.get("media_content", []):
+        u = m.get("url", "")
+        if u.startswith("http"):
+            return u
+    for l in e.get("enclosures", []):
+        if str(l.get("type", "")).startswith("image") and l.get("href"):
+            return l["href"]
     return ""
 
 seen, count = set(), 0
@@ -147,18 +133,18 @@ for src in RSS_SOURCES:
             title = (e.get("title") or "").strip()
             if not title or title in seen:
                 continue
-            full = title + " " + strip_html(e.get("summary", ""))
+            summary = strip_html(e.get("summary", ""))
+            full = title + " " + summary
             if is_blocked(full):
                 continue
-            is_intl = src["cat"] == "国际"
             seen.add(title)
             facts["news_pool"].append({
                 "title": title,
                 "source": src["name"],
                 "cat": src["cat"],
                 "link": e.get("link", ""),
-                "summary": "" if is_intl else strip_html(e.get("summary", ""))[:120],
-                "image": entry_image(e),
+                "summary": summary[:250],
+                "image": pick_image(e),
             })
             got += 1
             count += 1
