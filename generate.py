@@ -62,6 +62,20 @@ def call(facts, pool, edition):
         timeout=480,
     )
 
+def call_with_retry(facts, pool, edition, attempts=3):
+    """网络类错误（超时/连接失败）自动重试，其他错误直接抛出。"""
+    for i in range(attempts):
+        try:
+            return call(facts, pool, edition)
+        except Exception as e:
+            msg = str(e).lower()
+            transient = ("timeout" in msg or "timed out" in msg
+                         or "connection" in msg or "connect" in msg)
+            if not transient or i == attempts - 1:
+                raise
+            print(f"第 {i + 1} 次调用遇到网络问题（{e}），60 秒后重试…")
+            time.sleep(60)
+
 def main():
     facts = json.load(open("facts.json", encoding="utf-8"))
     edition = facts.get("edition", EDITION)
@@ -69,24 +83,20 @@ def main():
 
     try:
         print(f"开始生成 {edition} 版稿件（长文生成约需 4-8 分钟，请耐心等待）…")
-        resp = call(facts, pool, edition)
+        resp = call_with_retry(facts, pool, edition)
     except Exception as e:
         msg = str(e)
         if "high risk" in msg or "content_filter" in msg:
             print("被内容过滤拦截，剔除国际条目重试…")
             try:
-                resp = call(facts, [n for n in pool if n["cat"] != "国际"], edition)
+                resp = call_with_retry(facts, [n for n in pool if n["cat"] != "国际"], edition)
             except Exception:
                 print("仍被拦截，再剔除疑似条目重试…")
                 try:
-                    resp = call(facts, [n for n in pool if n["cat"] != "国际" and not is_blocked(n["title"])], edition)
+                    resp = call_with_retry(facts, [n for n in pool if n["cat"] != "国际" and not is_blocked(n["title"])], edition)
                 except Exception:
                     print("仍被拦截，降级为行情简评稿")
-                    resp = call(facts, [], edition)
-        elif "timeout" in msg.lower() or "timed out" in msg.lower():
-            print("请求超时（已等待 8 分钟），60 秒后重试一次…")
-            time.sleep(60)
-            resp = call(facts, pool, edition)
+                    resp = call_with_retry(facts, [], edition)
         else:
             raise
 
