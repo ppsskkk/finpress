@@ -59,7 +59,7 @@ def call(facts, pool, edition):
             {"role": "system", "content": PROMPTS.get(edition, PROMPTS["morning"])},
             {"role": "user", "content": "今日素材（JSON）：" + json.dumps(f2, ensure_ascii=False)},
         ],
-        timeout=180,
+        timeout=480,
     )
 
 def main():
@@ -68,6 +68,7 @@ def main():
     pool = facts["news_pool"]
 
     try:
+        print(f"开始生成 {edition} 版稿件（长文生成约需 4-8 分钟，请耐心等待）…")
         resp = call(facts, pool, edition)
     except Exception as e:
         msg = str(e)
@@ -83,7 +84,7 @@ def main():
                     print("仍被拦截，降级为行情简评稿")
                     resp = call(facts, [], edition)
         elif "timeout" in msg.lower() or "timed out" in msg.lower():
-            print("请求超时，60秒后重试一次…")
+            print("请求超时（已等待 8 分钟），60 秒后重试一次…")
             time.sleep(60)
             resp = call(facts, pool, edition)
         else:
