@@ -48,12 +48,12 @@ def quote_detail(f):
     prev = float(f[4]); price = float(f[3])
     return {
         "开盘": round(float(f[5]), 2),
-        "最高": round(float(f[6]), 2),
-        "最低": round(float(f[7]), 2),
+        "最高": round(float(f[33]), 2),
+        "最低": round(float(f[34]), 2),
         "收盘": round(price, 2),
         "昨收": round(prev, 2),
         "涨跌幅%": round((price - prev) / prev * 100, 2),
-        "振幅%": round((float(f[6]) - float(f[7])) / prev * 100, 2),
+        "振幅%": round((float(f[33]) - float(f[34])) / prev * 100, 2),
     }
 
 try:
@@ -64,6 +64,30 @@ try:
             facts["index"][name] = quote_detail(f)
     try:
         facts["total_turnover_yi"] = round(float(quotes["sh000001"][37]) / 1e4 + float(quotes["sz399106"][37]) / 1e4)
+    except Exception:
+        pass
+    # 休市检测：行情时间戳（字段30）的数据日期早于"应有交易日"即为节假日休市
+    def last_weekday(d):
+        while d.weekday() >= 5:
+            d -= timedelta(days=1)
+        return d
+    today = now.date()
+    # A股：晚报参照今天，晨报/周报参照前一交易日
+    try:
+        ref = today if EDITION == "evening" else today - timedelta(days=1)
+        ts = re.sub(r"\D", "", quotes["sh000001"][30])[:8]
+        data_date = datetime.strptime(ts, "%Y%m%d").date()
+        facts["a_share_status"] = "正常" if data_date >= last_weekday(ref) else "休市"
+        facts["a_share_last_trade_date"] = data_date.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    # 美股：晨报/晚报均为"隔夜"行情，参照北京前一日的美国交易日
+    try:
+        ts = re.sub(r"\D", "", quotes["usDJI"][30])[:8]
+        data_date = datetime.strptime(ts, "%Y%m%d").date()
+        expected = last_weekday(today - timedelta(days=1))
+        facts["us_status"] = "正常" if data_date >= expected else "休市"
+        facts["us_last_trade_date"] = data_date.strftime("%Y-%m-%d")
     except Exception:
         pass
 except Exception as e:
