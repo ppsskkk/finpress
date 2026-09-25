@@ -93,6 +93,7 @@ RSS_SOURCES = [
     {"name": "BBC英文·财经", "url": "https://feeds.bbci.co.uk/news/business/rss.xml", "cat": "国际"},
     {"name": "FT中文网",     "url": "http://www.ftchinese.com/rss/news",            "cat": "国际"},
     {"name": "华尔街见闻",   "url": "https://dedicated.wallstreetcn.com/rss.xml",   "cat": "经济"},
+    {"name": "钛媒体",       "url": "https://www.tmtpost.com/rss.xml",              "cat": "经济"},  # ⚠️ 新增，待验证
     {"name": "少数派",       "url": "https://sspai.com/feed",                       "cat": "科技"},
     {"name": "爱范儿",       "url": "https://www.ifanr.com/feed",                   "cat": "科技"},
 ]
@@ -104,8 +105,10 @@ def strip_html(s):
 
 # 内容安全预过滤：命中即剔除该条。遇到 content_filter 报错时，
 # 看运行日志里 facts.json 中的标题，把触发词补充到下面列表。
+# 领导人相关词为公众号合规红线，请勿删除。
 BLOCK_PATTERNS = [w.lower() for w in [
-    "填入触发词1", "填入触发词2",
+    "习近平", "李强", "赵乐际", "王沪宁", "蔡奇", "丁薛祥", "李希",
+    "韩正", "王毅", "总书记", "国家主席",
 ]]
 
 def is_blocked(text):
