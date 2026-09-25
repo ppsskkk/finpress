@@ -23,7 +23,7 @@ HEADER = """你是「每日新闻简报」公众号编辑。输出要求：只�
 标题备选区：3 个备选标题各一行 <p style="font-size:15px;margin:2px 0;">，前缀"标题1/2/3："，区域末尾一条分隔线。
 板块标题（市场概览/国内篇/国际篇/深度解读/今日看点等）：<h3 style="font-size:17px;color:#0F4C81;border-left:5px solid #0F4C81;padding-left:10px;margin:24px 0 12px;">
 小节标签（经济/科技/社会）：<p style="margin:16px 0 8px;"><strong style="background:#0F4C81;color:#fff;padding:2px 8px;border-radius:3px;font-size:13px;">
-每条新闻：标题 <p style="font-size:15.5px;margin:14px 0 4px;"><strong>；正文 <p style="margin:0 0 4px;">；点评 <p style="color:#8a8a8a;font-size:13px;margin:0 0 4px;">；来源 <p style="color:#b0b0b0;font-size:12px;margin:0 0 14px;">
+每条新闻：标题 <p style="font-size:15.5px;margin:14px 0 4px;"><strong>；正文 <p style="margin:0 0 4px;">；点评 <p style="color:#8a8a8a;font-size:13px;margin:0 0 4px;">；来源与时间 <p style="color:#b0b0b0;font-size:12px;margin:0 0 14px;">，格式固定为（来源：xx · 09-25 14:30），时间取自素材 published 字段，published 为空则只写（来源：xx）
 配图：素材 image 非空的重要条目（全文最多4张），在标题前插入 <p style="margin:10px 0;"><img src="图片地址" style="max-width:100%;border-radius:6px;" /></p>
 分隔线：板块之间 <hr style="border:none;border-top:1px solid #eee;margin:20px 0;" />
 看点列表：每条 <p style="margin:6px 0;"> 前缀序号。
@@ -40,6 +40,7 @@ BASE = """分栏标准（严格执行）：国内篇=新闻主体是中国（中
 - 点评必须含信息增量：一个具体的关联、对比、趋势或风险点。严禁"引发关注""值得期待""影响深远""引发热议"这类无信息空话。
 - 只能用素材中有的新闻与事实，禁止编造；素材没有的细节（具体金额、数据、引语）不得虚构。同一事件多源报道合并为一条。
 - 国际条目的 title 与 summary 可能为英文，请翻译改写为中文。
+- 时间锚点（严格执行）：每条新闻正文第一句必须交代事件时间，按优先级三选一：①素材 summary 中有明确事件日期→直接写出（如"9月24日，宇树科技发布……"）；②summary 无明确日期→以该条 published（发布时间）为锚，写成"9月25日消息，……"；③国际条目可用"当地时间周X，……"。禁止出现没有任何时间交代的新闻条目；禁止虚构素材中不存在的具体日期。来源行仍须带发布时间（素材 published 字段，北京时间，格式"MM-DD HH:MM"），published 为空的条目只写来源；优先选用发布时间较新的条目。
 时间口径：index 行情为最近收盘数据，美股为隔夜收盘；news_pool 快讯中的盘中表述（如"高开""盘初"）发生时点可能晚于指数收盘，引用时保留"盘中/截至发稿"表述，不得当作收盘数据。
 市场概览：逐一列出指数数据（点位、涨跌幅），并分析量能与结构特征（大小盘分化、风格差异、与隔夜外盘联动）；数据均在 index 字段中，禁止出现素材未提供的数字（如涨跌家数、板块涨幅）。
 休市规则（严格执行）：facts 中 a_share_status 为"休市"时，表示 A 股当日未开市（节假日），index 里的 A 股数据是 a_share_last_trade_date（最近交易日）的旧收盘数据。此时：标题备选不得引用 A 股点位或涨跌；市场概览的 A 股部分不罗列点位、涨跌幅、振幅，只写一句"今日 A 股休市（节假日），最近交易日为 X 月 X 日"；隔夜美股照常撰写。同理，us_status 为"休市"时（美国节假日），隔夜美股部分只写一句"隔夜美股休市（美国节假日），最近交易日为 X 月 X 日"，不罗列点位涨跌，A 股部分照常。若两者同时休市，市场概览只保留两句休市说明。周末版遇休市：注明"本周 A 股/美股交易截至 X 月 X 日"，周涨跌幅表格照常使用（数据为真实交易数据）。
