@@ -148,6 +148,17 @@ def pick_image(e):
             return l["href"]
     return ""
 
+def entry_time(e):
+    """提取条目发布时间，转为北京时间 MM-DD HH:MM；无则返回空串。"""
+    for key in ("published_parsed", "updated_parsed"):
+        t = e.get(key)
+        if t:
+            try:
+                return datetime(*t[:6], tzinfo=timezone.utc).astimezone(CN).strftime("%m-%d %H:%M")
+            except Exception:
+                pass
+    return ""
+
 seen, count = set(), 0
 for src in RSS_SOURCES:
     try:
@@ -170,6 +181,7 @@ for src in RSS_SOURCES:
                 "source": src["name"],
                 "cat": src["cat"],
                 "link": e.get("link", ""),
+                "published": entry_time(e),
                 "summary": summary[:200],
                 "image": pick_image(e),
             })
