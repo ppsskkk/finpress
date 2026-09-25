@@ -1,9 +1,5 @@
 name: daily-finpress
 on:
-  schedule:
-    - cron: "30 23 * * 0-4"   # 北京时间 周一至周五 7:30（晨报）
-    - cron: "30 13 * * 1-5"   # 北京时间 周一至周五 21:30（晚报）
-    - cron: "0 0 * * 0"       # 北京时间 周日 8:00（周报）
   workflow_dispatch:
 
 jobs:
