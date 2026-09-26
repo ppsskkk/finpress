@@ -9,7 +9,7 @@ CN = timezone(timedelta(hours=8))
 now = datetime.now(CN)
 
 if now.weekday() == 6:
-    EDITION = "weekly"
+    EDITION = "weekly"      # 周日只出周报
 elif now.hour < 18:
     EDITION = "morning"
 else:
