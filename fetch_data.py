@@ -117,12 +117,13 @@ RSS_SOURCES = [
     {"name": "BBC英文·财经", "url": "https://feeds.bbci.co.uk/news/business/rss.xml", "cat": "国际"},
     {"name": "FT中文网",     "url": "http://www.ftchinese.com/rss/news",            "cat": "国际"},
     {"name": "华尔街见闻",   "url": "https://dedicated.wallstreetcn.com/rss.xml",   "cat": "经济"},
-    {"name": "钛媒体",       "url": "https://www.tmtpost.com/rss.xml",              "cat": "经济"},  # ⚠️ 新增，待验证
+    {"name": "钛媒体",       "url": "https://www.tmtpost.com/rss.xml",              "cat": "经济"},
     {"name": "少数派",       "url": "https://sspai.com/feed",                       "cat": "科技"},
     {"name": "爱范儿",       "url": "https://www.ifanr.com/feed",                   "cat": "科技"},
+    {"name": "中新网体育",   "url": "https://www.chinanews.com.cn/rss/sports.xml",  "cat": "体育"},  # ⚠️ 新增，待验证
 ]
 MAX_PER_SOURCE = 4
-MAX_TOTAL = 24
+MAX_TOTAL = 28
 
 def strip_html(s):
     return re.sub(r"<[^>]+>", "", s or "").strip()
